@@ -5,6 +5,7 @@ const cookieParser = require('cookie-parser')
 const connectDB = require('./config/db')
 
 const authRouter = require('./routes/auth.route')
+const userRouter = require('./routes/user.route')
 
 const PORT = process.env.PORT || 8080
 const app = express()
@@ -21,6 +22,7 @@ app.use(cookieParser())
 
 // API endPoints
 app.use('/api/auth',authRouter)
+app.use('/api/userDetails',userRouter)
 
 // start the server 
 app.listen(PORT, () => {
