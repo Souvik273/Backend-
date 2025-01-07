@@ -2,8 +2,7 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const validator = require('validator');
 const User = require('../models/user.models.js');
-// const { transporter } = require('../config/nodemailer.js');
-const nodemailer = require('nodemailer')
+const transporter = require('../config/nodemailer')
 
 const createToken = (id) => {
     return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: '2d' });
@@ -46,33 +45,24 @@ const register = async (req, res) => {
     });
 
     // Send the welcome email
-
-    (async () => {
-    const transporter = nodemailer.createTransport({
-        host: process.env.SMTP_SERVER,
-        port: process.env.SMTP_PORT,
-        auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-        },
-    });
-
     const mailOptions = {
         from: process.env.SENDER_EMAIL,
-        to: email,
+        to: email,  
         subject: 'Test Email',
         text: 'This is a test email.',
     };
+    
 
     try {
+        if (!mailOptions.to || typeof mailOptions.to !== 'string') {
+            console.error('Invalid recipient:', mailOptions.to);
+        }
         const info = await transporter.sendMail(mailOptions);
         console.log('Email sent: ', info.response);
     } catch (err) {
         console.error('Error sending email: ', err);
     }
-    })();
         
-
     return res.status(201).json({ success: true, message: 'User registered successfully and email sent!' });
   } catch (err) {
     console.error(err);
@@ -131,4 +121,72 @@ const logOut = async (req, res) => {
     }
 };
 
-module.exports = { register, logIn, logOut };
+// send verification otp to user email 
+const sendVerifyOtp = async (req,res)=>{
+    try{
+        const {userId} = req.body
+
+        const user = await User.findById(userId)
+
+        if(!user){
+            return res.json({success:false,message:'User not found!!!'})
+        }
+
+        if(user.isAccountVerified){
+            return res.json({success:false,message:'Account already verified'})
+        }
+        const otp = String (Math.floor(100000 + Math.random() * 900000))
+
+        user.verifyOtp = otp
+        user.verifyOtpExpiryAt = Date.now()+24*60*60*1000
+        await user.save()
+
+        const mailOption ={
+            from:process.env.SENDER.EMAIL,
+            to: user,
+            subject: 'Account verification OTP',
+            text: `Your verification OTP is ${otp} `,
+        }
+        try{
+            await transporter.sendMail(mailOption)
+        }catch(err){
+            console.error(err)
+        }
+        res.json({success:true,message:'Verification OTP send'})
+    }
+    catch(error){
+        res.json({success:false,message:error})
+    }
+}
+
+const verifyEmail = async (req,res)=>{
+    try{
+        const {userId , otp } = req.body
+        if(!userId || !otp){
+            return res.json({success:false,message:'Invalid request'})
+        }
+        try{
+            const user = await User.findById(userId)
+            if(!user){
+                return res.json({success:false,message:'User not found!!!'})
+            }
+            if(user.verifyOtp === '' || user.verifyOtp!==otp){
+                return res.json({success:false,message:'Invalid OTP'})
+            }
+            if(user.verifyOtpExpireAt < Date.now()){
+                return res.json({success:false,message:'OTP expired'})
+            }
+            user.isAccountVerified = true
+            user.verifyOtp = ''
+            user.verifyOtpExpireAt = 0
+            await user.save()
+            res.json({success:true,message:'Email verified successfully'})
+        }catch(err){
+            return res.json(err)
+        }
+    }catch(err){
+        console.error(err)
+    }
+}
+
+module.exports = { register, logIn, logOut , sendVerifyOtp ,verifyEmail};
